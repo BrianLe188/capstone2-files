@@ -1,35 +1,39 @@
 import dotenv from "dotenv";
 dotenv.config();
 import express from "express";
-import multer from "multer";
-import path from "path";
 import fs from "fs";
+import amqp from "amqplib";
+import { v4 } from "uuid";
 
 const app = express();
 
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const folder = path.join(__dirname, "..", "upload", req.params.folder);
-    if (!fs.existsSync(folder)) {
-      fs.mkdirSync(folder);
-    }
-    cb(null, path.join(__dirname, "..", "upload"));
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(
-      null,
-      req.params.folder + "/" + uniqueSuffix + path.extname(file.originalname)
-    );
-  },
-});
+app.use("/upload", express.static("upload"));
 
-const upload = multer({ storage });
+async function main() {
+  try {
+    const amqpConnection = await amqp.connect("amqp://127.0.0.1");
+    const channel = await amqpConnection.createChannel();
+    const messageExchange = "file";
+    const messageQueue = "upload_file";
 
-app.post("/upload/:folder", upload.single("file"), (req, res) => {
-  res.send("File uploaded successfully!");
-});
+    await channel.assertExchange(messageExchange, "direct");
+    await channel.assertQueue(messageQueue);
+    await channel.bindQueue(messageQueue, messageExchange, "write");
 
-app.listen(3000, () => {
-  console.log("File service listening on port");
-});
+    channel.consume(messageQueue, (msg) => {
+      if (msg?.fields.routingKey === "write") {
+        fs.writeFileSync(`upload/${v4}.png`, msg.content);
+      }
+    });
+
+    app.listen(process.env.FILE_PORT, () => {
+      console.log(`File service listening on ${process.env.FILE_PORT}`);
+    });
+  } catch (error) {
+    setInterval(() => {
+      main();
+    }, 1000);
+  }
+}
+
+main();
