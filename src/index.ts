@@ -19,7 +19,7 @@ async function main() {
     const channel = await amqpConnection.createChannel();
     const messageExchange = "file";
     const messageQueue = "upload_file";
-    const returnMessageQueue = "return_file";
+    const returnMessageQueue = "return_path";
 
     await channel.assertExchange(messageExchange, "direct");
     await channel.assertQueue(messageQueue);
